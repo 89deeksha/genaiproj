@@ -1,11 +1,17 @@
 const { JsonWebTokenError } = require('jsonwebtoken')
 const userModel=require('../Model/UserModel')
+
+
 const bcrypt=require('bcrypt')
 const jwt=require('jsonwebtoken')
+const tokenBlacklist = require('../Model/Tokenblackllist')
+
 module.exports={
     registerUser:async(req,res)=>{
-        const{userName, email, password}=req.body
-        if(!userName||!email|| !password){
+        
+try{
+const{userName, email, password}=req.body || {}
+        if(!userName ||!email || !password){
            return res.status(400).json({
             message:"please provide username, email and password"
            })
@@ -21,9 +27,9 @@ module.exports={
             message:"user already exist"
         })
     }
-    const hash=bcrypt.hash(password,10)
+    const hash=await bcrypt.hash(password,10)
     //creating new user
-    const newUser=userModel.create({
+    const newUser=await userModel.create({
         userName,
         email,
         password:hash
@@ -44,18 +50,21 @@ module.exports={
         user:{
             id:newUser.id,
             userName:newUser.userName,
-            Email:newUser.email
+            email:newUser.email
 
 
         }
     })
-    }
+}catch(err){
+res.status(500).json({message:err.message})
+console.log(err)
+}
+
+        
+    },
   
 
-       
-}
-module.exports={
-    loginUser:async(req,res)=>{
+   loginUser:async(req,res)=>{
         const {email,password}=req.body
         //checking the email recieved is there any account exist from this
         const user=await userModel.findOne({
@@ -67,8 +76,46 @@ module.exports={
             })
         }
         //password check
-        const comparePassword=bcrypt.compare(password,newUser.password)
+        const comparePassword=await bcrypt.compare(password,user.password)
+        if(!comparePassword){
+            return res.status(400).json({
+                message:"password not valid"
+            })
+        }
+        const token=jwt.sign(
+        {id:user.id, userName:user.userName},
+        process.env.JWT_SECRET,
+        {expiresIn:"1d"}
+    )
+    res.cookie("token",token)
+    res.status(200).json({
+        message:"user loggedin successfully",
+        user:{
+            userId:user.id,
+            userName:user.userName,
+            email:user.email
+        }
+    })
+            
+
+
+    } ,
+    logOut :async(req,res)=>{
+        //getting token from cookies
+    const token=req.cookies.token
+    if(token){
+await tokenBlacklist.create({token})
+
+    }
+    res.clearCookie("token")
+    res.status(200).json({
+        message:"loggedout successfully"
+    })
 
 
     }
+
 }
+
+
+    
